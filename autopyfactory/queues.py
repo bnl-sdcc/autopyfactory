@@ -540,13 +540,6 @@ class ThreadedQueue(_thread):
         self._logtime() 
 
 
-# Mix-in class to duplicate old queue behavior, but allow non-threaded submit queue
-class APFQueue(APFSubmitQueue, ThreadedQueue):
-    
-    def __init__(self, config, factory, authman=None):
-        ThreadedQueue.__init__(self)
-        APFSubmitQueue.__init__(self, config, factory, authman)
-
 
 class APFSubmitQueue(object):
     '''
@@ -698,6 +691,14 @@ class APFSubmitQueue(object):
                                                              self.mcl, 
                                                              monitorsection)
                     self.monitor_plugins.append(monitor_plugin)
+
+
+# Mix-in class to duplicate old queue behavior, but allow non-threaded submit queue
+class APFQueue(APFSubmitQueue, ThreadedQueue):
+    
+    def __init__(self, config, factory, authman=None):
+        ThreadedQueue.__init__(self)
+        APFSubmitQueue.__init__(self, config, factory, authman)
 
 
                  
