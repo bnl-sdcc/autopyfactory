@@ -542,6 +542,49 @@ class ThreadedQueue(_thread):
         self._exitloop()
         self._logtime() 
 
+    def _exitloop(self):
+        """
+        Exit loop if desired number of cycles is reached...  
+        """
+        self.log.debug("__exitloop. Checking to see how many cycles to run.")
+        if self.cycles and self.cyclesrun >= self.cycles:
+                self.log.debug('_ stopping the thread because high cyclesrun')
+                self.stopevent.set()                        
+        self.log.debug("__exitloop. Incrementing cycles...")
+
+    def _wait_for_info_services(self):
+        """
+        wait for the info plugins to have valid content
+        before doing actions
+        """
+        self.log.debug('starting')
+        timeout = 1800 # 30 minutes
+        start = int(time.time())
+        
+        # Only worry about plugins that have been defined...
+        pluginstowait = []
+        if self.wmsstatus_plugin is not None:
+            pluginstowait.append(self.wmsstatus_plugin)
+        if self.batchstatus_plugin is not None:
+            pluginstowait.append(self.batchstatus_plugin)
+                
+        loop = True
+        while loop:
+            self.log.debug("Checking for info plugin valid content...")
+            now = int(time.time())
+            if (now - start) > timeout:
+                loop = False
+            else:
+                infolist = []
+                for p in pluginstowait:
+                    info = p.getInfo()
+
+                    infolist.append(info)
+                if None not in infolist:
+                    loop = False
+                else:
+                    time.sleep(10)
+        self.log.debug('leaving')        
 
 
 class APFSubmitQueue(object):
@@ -694,6 +737,95 @@ class APFSubmitQueue(object):
                                                              self.mcl, 
                                                              monitorsection)
                     self.monitor_plugins.append(monitor_plugin)
+
+
+
+    def _new_status_info(self):
+        # FIXME
+        # the timestamp for WMS Status is missing !!
+        if not self.batchstatus_plugin.last_timestamp > self.last_batchqueue_timestamp:
+            self.log.info("there is no fresh batch status data. Doing nothing.")
+            return False
+        else:
+            return True
+
+
+    def _callscheds(self, nsub=0):
+        """
+        calls the sched plugins 
+        and calculates the number of pilot to submit
+        """
+        fullmsg = ""
+        self.log.debug("APFQueue [%s] run(): Calling sched plugins..." % self.apfqname)
+        for sched_plugin in self.scheduler_plugins:
+            (nsub, msg) = sched_plugin.calcSubmitNum(nsub)
+            if msg:
+                if fullmsg:
+                    fullmsg = "%s;%s" % (fullmsg, msg)
+                else:
+                    fullmsg = msg
+        self.log.debug("APFQueue[%s]: All Sched plugins called. Result nsub=%s" % (self.apfqname, nsub))
+        #return nsub, fullmsg
+        self.nsub = nsub
+        self.fullmsg = fullmsg
+        ### BEGIN TEST TIMESTAMP ###
+        self.last_batchqueue_timestamp = self.batchstatus_plugin.last_timestamp
+        ### END TEST TIMESTAMP ###
+        return nsub
+
+
+    def _submit(self, nsub):
+        """
+        submit using this number
+        call for cleanup
+        """
+        self.log.debug("Starting")
+        msg = 'Attempt to submit %s pilots for queue %s' %(nsub, self.apfqname)
+        jobinfolist = self.batchsubmit_plugin.submit(nsub)
+        self.log.debug("Attempted submission of %d pilots and got jobinfolist %s" % (nsub, jobinfolist))
+        self.batchsubmit_plugin.cleanup()
+        self.cyclesrun += 1
+        self.log.debug("APFQueue[%s]: Submitted jobs. Joblist is %s" % (self.apfqname, jobinfolist))
+        #return jobinfolist
+        self.jobinfolist = jobinfolist
+
+    def _monitor(self):
+
+        for m in self.monitor_plugins:
+            self.log.debug('APFQueue[%s] run(): calling registerJobs for monitor plugin %s' % (self.apfqname, m))
+            m.registerJobs(self, self.jobinfolist)
+            if self.fullmsg:
+                self.log.debug('APFQueue[%s] run(): calling updateLabel for monitor plugin %s' % (self.apfqname, m))
+                m.updateLabel(self.apfqname, self.fullmsg)
+
+
+
+
+    def _logtime(self):
+        """
+        report the time passed since the object was created
+        """
+
+        self.log.debug("__reporttime: Starting")
+
+        now = datetime.datetime.now()
+        delta = now - self.inittime
+        days = delta.days
+        seconds = delta.seconds
+        hours = seconds/3600
+        minutes = (seconds%3600)/60
+        total_seconds = days*86400 + seconds
+        if self.cyclesrun:
+            average = total_seconds/self.cyclesrun
+        else:
+            average = 'None'
+
+        self.log.debug('__reporttime: up %d days, %d:%d, %d cycles, ~%s s/cycle' %(days, hours, minutes, self.cyclesrun, average))
+        self.log.info('Up %d days, %d:%d, %d cycles, ~%s s/cycle' %(days, hours, minutes, self.cyclesrun, average))
+        self.log.debug("__reporttime: Leaving")
+
+
+
 
 
 # Mix-in class to duplicate old queue behavior, but allow non-threaded submit queue
