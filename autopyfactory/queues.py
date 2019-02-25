@@ -570,14 +570,14 @@ class APFSubmitQueue(object):
         self.inittime = datetime.datetime.now()
 
         try: 
-            self.wmsqueue = self.qcl.generic_get(apfqname, 'wmsqueue')
+            self.wmsqueue = self.qcl.generic_get(self.apfqname, 'wmsqueue')
             cycles = self.fcl.generic_get("Factory", 'cycles')
             if cycles != None:
                 cycles = int(cycles)
             self.cycles = cycles
             self.cyclesrun = 0
 
-            self.sleep = self.qcl.generic_get(apfqname, 'apfqueue.sleep', 'getint')
+            self.sleep = self.qcl.generic_get(self.apfqname, 'apfqueue.sleep', 'getint')
             self._thread_loop_interval =  self.sleep
            
         except Exception as ex:
