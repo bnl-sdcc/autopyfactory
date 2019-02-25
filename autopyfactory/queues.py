@@ -552,7 +552,7 @@ class APFSubmitQueue(object):
     def __init__(self, config, factory, authman=None):
         self.qcl = config
         self.apfqname = config.sections()[0]
-        self.log = logging.getLogger('autopyfactory.queue.%s' %apfqname)
+        self.log = logging.getLogger('autopyfactory.queue.%s' %self.apfqname)
         self.log.debug('APFQueue: Initializing object...')
         if factory is None:
             logging.debug("Creating config for factory mock.")
