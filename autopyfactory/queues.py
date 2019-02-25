@@ -521,7 +521,7 @@ class APFQueuesConfigsDiff(ConfigsDiff):
 
 class ThreadedQueue(_thread):
     
-    def __init__(self):
+    def __init__(self, config, factory, authman=None):
         _thread.__init__(self)
         factory.threadsregistry.add("queue", self)
 
@@ -697,7 +697,7 @@ class APFSubmitQueue(object):
 class APFQueue(APFSubmitQueue, ThreadedQueue):
     
     def __init__(self, config, factory, authman=None):
-        ThreadedQueue.__init__(self)
+        ThreadedQueue.__init__(self, config, factory, authman)
         APFSubmitQueue.__init__(self, config, factory, authman)
 
 
