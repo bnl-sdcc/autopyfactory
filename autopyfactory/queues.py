@@ -157,7 +157,10 @@ class APFQueuesManager(object):
         
         if enabled:
             try:
-                qobject = APFQueue(apfqname, self.factory)
+                #qobject = APFQueue(apfqname, self.factory)
+                #  config, factory, authman=None):
+                qconf = self.factory.qcl.getSection(apfqname)
+                qobject = APFQueue(qconf, self.factory)
                 self.queues[apfqname] = qobject
                 #qobject.start()
                 self.log.info('Queue %s enabled.' % apfqname)
