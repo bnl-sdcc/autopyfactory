@@ -127,11 +127,15 @@ class APFQueuesManager(object):
             self.log.debug("%d queues exist. Starting all queue threads, if not running." % len(self.queues))
             for q in self.queues.values():
                 self.log.debug("Checking queue %s" % q.apfqname)
-                if not q.isAlive():
-                    self.log.debug("Starting queue %s." % q.apfqname)
-                    q.start()
+                if isinstance(q, threading.Thread):
+                    if not q.isAlive():
+                            self.log.debug("Starting queue %s." % q.apfqname)
+                            q.start()
+                    else:
+                        self.log.debug("Queue %s already running." % q.apfqname)                
                 else:
-                    self.log.debug("Queue %s already running." % q.apfqname)
+                        self.log.debug("Queue %s is not a thread, so not starting." % q.apfqname )
+
 
     def _add_queue_l(self, apfqnames):
         """
@@ -152,16 +156,27 @@ class APFQueuesManager(object):
         self.log.debug('adding queue %s' %apfqname)
 
         queueenabled = self.factory.qcl.generic_get(apfqname, 'enabled', 'getboolean')
+        queueklass = self.factory.qcl.generic_get(apfqname, 'klass', default_value = 'ThreadedAPFQueue')
+        self.log.debug('queue %s is type %s' % ( apfqname, queueklass))
         globalenabled = self.factory.fcl.generic_get('Factory', 'enablequeues', 'getboolean', default_value=True)
         enabled = queueenabled and globalenabled
         
         if enabled:
             try:
                 #qobject = APFQueue(apfqname, self.factory)
-                #  config, factory, authman=None):
-                qconf = self.factory.qcl.getSection(apfqname)
-                qobject = APFQueue(qconf, self.factory)
-                self.queues[apfqname] = qobject
+                #config, factory, authman=None):
+                qconf = self.factory.qcl
+                if queueklass == 'ThreadedAPFQueue':           
+                    qobject = ThreadedAPFQueue(qconf, apfqname, self.factory, authman = self.factory.authmanager)
+                    self.queues[apfqname] = qobject
+                elif queueklass == 'ThreadedLBQueue':
+                    qobject = ThreadedLBQueue(qconf, apfqname, self.factory, authman = self.factory.authmanager)
+                    self.queues[apfqname] = qobject
+                elif queueklass == 'APFSubmitQueue':
+                    qobject = APFSubmitQueue(qconf, apfqname, self.factory, authman = self.factory.authmanager)
+                    self.queues[apfqname] = qobject                                        
+                else:
+                    self.log.error('No such queueklass %s !' % queueklass)    
                 #qobject.start()
                 self.log.info('Queue %s enabled.' % apfqname)
             except Exception:
@@ -214,7 +229,8 @@ class APFQueuesConfigsDiff(ConfigsDiff):
 
 class ThreadedQueue(_thread):
     
-    def __init__(self, config, factory, authman=None):
+    def __init__(self, config, section, factory, authman=None):
+        self.apfqname = section
         _thread.__init__(self)
         factory.threadsregistry.add("queue", self)
 
@@ -277,14 +293,15 @@ class ThreadedQueue(_thread):
         self.log.debug('leaving')        
 
 
-class APFSubmitQueue(object):
+class APFSubmitQueue(SubmitQueue):
     '''
     All functionality except threaded behavior.    
     
     '''
-    def __init__(self, config, factory, authman=None):
+    def __init__(self, config, section, factory, authman=None):      
         self.qcl = config
-        self.apfqname = config.sections()[0]
+        self.apfqname = section
+        SubmitQueue.__init__(self, config, section)
         self.log = logging.getLogger('autopyfactory.queue.%s' %self.apfqname)
         self.log.debug('APFQueue: Initializing object...')
         if factory is None:
@@ -407,6 +424,7 @@ class APFSubmitQueue(object):
                                                           self, 
                                                           self.qcl, 
                                                           self.apfqname)
+        self.batchplugin = self.batchsubmit_plugin
 
 
     def _monitor_plugins(self):
@@ -514,16 +532,18 @@ class APFSubmitQueue(object):
         self.log.debug("__reporttime: Leaving")
 
 
-
-
-
 # Mix-in class to duplicate old queue behavior, but allow non-threaded submit queue
-class APFQueue(APFSubmitQueue, ThreadedQueue):
+class ThreadedAPFQueue(APFSubmitQueue, ThreadedQueue):
     
-    def __init__(self, config, factory, authman=None):
-        ThreadedQueue.__init__(self, config, factory, authman)
-        APFSubmitQueue.__init__(self, config, factory, authman)
+    def __init__(self, config, section, factory, authman=None):
+        ThreadedQueue.__init__(self, config, section, factory, authman)
+        APFSubmitQueue.__init__(self, config, section, factory, authman)
 
+
+class ThreadedLBQueue(LBQueue, ThreadedQueue):
+    def __init__(self, config, section, factory, authman=None):
+        ThreadedQueue.__init__(self, config, section, factory, authman)
+        LBQueue.__init__(self, config, section)
 
                  
 class APFMockedSubmitQueue(object):

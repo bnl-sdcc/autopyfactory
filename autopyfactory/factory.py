@@ -559,11 +559,7 @@ class Factory(object):
         """
 
         self.log.debug("Starting.")
-        self.log.info("Starting all Queue threads...")
-
-        # first call to reconfig() to load initial qcl configuration
-        ###self.reconfig()
-        
+        self.log.info("Starting all Queue threads...")      
         confighandler = ConfigHandler(self)
         confighandler.setconfig()  # it calls the ConfigHandler._run() method, 
                                    # either in an infinite loop on single shot
@@ -575,17 +571,19 @@ class Factory(object):
         
         try:
             while not self.shutdown:
-
                 mainsleep = int(self.fcl.get('Factory', 'factory.sleep'))
                 time.sleep(mainsleep)
                 self.log.debug('Checking for interrupt.')
-
                 # check if queues are alive
                 queues_alive = False
                 for q in self.apfqueuesmanager.queues.values():
-                    if q.isAlive():
-                        queues_alive = True   
-                        break
+                    # Only threads have isAlive(). Some queue objects aren't threads. 
+                    self.log.debug("Checking queue %s" % q.apfqname)
+                    if isinstance(q, threading.Thread):
+                        self.log.debug("Queue %s IS a thread." % q.apfqname)
+                        if q.isAlive():
+                            queues_alive = True   
+                            break
     
                 if not queues_alive:
                     # no queue is alive...
@@ -595,7 +593,6 @@ class Factory(object):
                         self.log.info("shutting down the factory")
                         self.stop()
                         self.shutdown = True 
-
             self.log.debug('Leaving')
                                 
         except Exception as ex:
@@ -627,10 +624,12 @@ class Factory(object):
         """
         Method to cleanly shut down all factory activity, joining threads, etc. 
         """
-        logging.debug(" Shutting down all Queue threads...")
+        logging.debug(" Shutting down all factory threads...")
         self.shutdown = True
         self.threadsregistry.join() 
         self.log.debug('Leaving')
+        for t in threading.enumerate():
+            self.log.debug("%s" % t)
 
                             
     def sendAdminEmail(self, subject, messagestring):

@@ -2,6 +2,7 @@
 
 import logging
 import logging.handlers
+import threading
 
 from autopyfactory.apfexceptions import ThreadRegistryInvalidKind
 
@@ -57,7 +58,14 @@ class ThreadsRegistry(object):
         msg = 'stopping %s %s thread(s)' %(len(threads), kind)
         self.log.debug(msg)
         for thread in threads:
-            msg = 'stopping another %s thread' %kind
-            self.log.debug(msg)
-            thread.join(5)
-                
+            if isinstance(thread, threading.Thread):
+                if thread.isAlive():
+                    msg = 'stopping another %s thread' %kind
+                    self.log.debug(msg)
+                    thread._join()
+                    thread.join(1)
+                else:
+                    self.log.debug("thread not started")
+            else:
+                self.log.debug('object is not thread')
+        self.log.debug('done.')

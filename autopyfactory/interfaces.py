@@ -198,15 +198,11 @@ class MonitorInterface(object):
 import threading
 import time
 
-
 class _thread(threading.Thread):
     
-    def __init__(self):
-        
+    def __init__(self):       
         self.log = logging.getLogger('autopyfactory')
-
         self.Lock = threading.Lock()
-
         threading.Thread.__init__(self) # init the thread
         self.stopevent = threading.Event()
         # to avoid the thread to be started more than once
@@ -318,9 +314,11 @@ class _thread(threading.Thread):
         if not self.stopevent.isSet():
             self.log.debug('joining thread')
             self.stopevent.set()
-            self._join()
-            threading.Thread.join(self, timeout)
-
-
+            if self.isAlive():
+                threading.Thread.join(self, timeout)
+            else:
+                self.log.debug("thread never started...")
+    
     def _join(self):
         pass
+          
