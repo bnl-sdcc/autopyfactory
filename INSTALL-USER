@@ -86,7 +86,26 @@ Notable issues for initial installation or upgrades:
        tail -f ~/var/log/apf.log
        
   
-       
+Running from source
+-------------------------------------------------------
+
+E.g. from ~/git
+
+-- Normally install Condor with a personal condor setup. 
+-- Install libfactory from source:
+	cd ~/git
+	git clone https://github.com/bnl-sdcc/libfactory.git
+	cd libfactory
+	python setup.py install --home=$HOME
+
+-- Install autopyfactory from source:
+	cd ~/git
+	git clone https://github.com/bnl-sdcc/autopyfactory.git
+	cd autopyfactory
+	python setup.py install --home=$HOME
+
+-- Run the factory:
+	/usr/bin/python bin/autopyfactory --conf etc/autopyfactory-dev.conf --debug --sleep=60 --runas=$USER        
        
       
       
