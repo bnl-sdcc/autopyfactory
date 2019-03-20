@@ -234,9 +234,9 @@ class ThreadedQueue(_thread):
         _thread.__init__(self)
         factory.threadsregistry.add("queue", self)
 
-    def _run(self):
+    def _runonce(self):
         """
-        Method called by thread.start()
+        Method called by _thread.mainloop()
         Main functional loop of this APFQueue. 
         """        
         self._wait_for_info_services()

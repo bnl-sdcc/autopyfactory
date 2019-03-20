@@ -258,7 +258,7 @@ class _thread(threading.Thread):
         while not self.stopevent.isSet():
             try:                       
                 if self._check_for_actions():
-                    self._run()
+                    self._runonce()
                     self._thread_last_action = int( time.time() )
             except Exception as ex:
                 self.log.warning("an exception has been captured during thread main loop: %s" % ex)
