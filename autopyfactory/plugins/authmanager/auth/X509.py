@@ -20,16 +20,16 @@ sys.path.insert(0, prepath)
 
 from subprocess import Popen, PIPE, STDOUT
 from autopyfactory.apfexceptions import InvalidProxyFailure
-from autopyfactory.interfaces import _thread
+from autopyfactory.threadmanagement import ManagedThread
 
         
-class X509(_thread):
+class X509(ManagedThread):
     """
     Checks, creates, and renews a VOMS proxy. 
     or retrieves suitable credential from MyProxy 
     """
     def __init__(self, manager, config, section):
-        _thread.__init__(self)
+        ManagedThread.__init__(self)
         try: 
             manager.factory.threadsregistry.add("plugin", self)
         except AttributeError:

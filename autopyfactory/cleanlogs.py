@@ -14,9 +14,9 @@ import shutil
 import threading
 import time
 
-from autopyfactory.interfaces import _thread
+from autopyfactory.threadmanagement import ManagedThread
 
-class CleanLogs(_thread):
+class CleanLogs(ManagedThread):
     """
     -----------------------------------------------------------------------
     Class to handle the log files removal.
@@ -39,7 +39,7 @@ class CleanLogs(_thread):
         the CleanLogs instance
         """
 
-        _thread.__init__(self)
+        ManagedThread.__init__(self)
         self._thread_loop_interval = 60 * 60  # sleep 1 hour between loops        
         try:
             parent.threadsregistry.add("util", self)

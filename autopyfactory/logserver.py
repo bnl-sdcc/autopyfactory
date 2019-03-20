@@ -26,7 +26,7 @@ try:
 except ImportError:
     from StringIO import StringIO
 
-from autopyfactory.interfaces import _thread
+from autopyfactory.threadmanagement import ManagedThread
 
 class MySimpleHTTPRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
 
@@ -217,13 +217,13 @@ class MyNoListingHTTPRequestHandler(MySimpleHTTPRequestHandler):
         
 
 
-class LogServer(_thread):
+class LogServer(ManagedThread):
     
     def __init__(self, parent, fcl):
         """
         docroot is the path to the base directory of the files to be served. 
         """
-        _thread.__init__(self)
+        ManagedThread.__init__(self)
         self.factory = parent
         try:
             self.factory.threadsregistry.add("util", self)

@@ -47,7 +47,7 @@ from autopyfactory.config import ConfigHandler
 from autopyfactory.configloader import Config, ConfigManager
 from autopyfactory.logserver import LogServer
 from autopyfactory.queues import APFQueuesManager
-from autopyfactory.threadsmanagement import ThreadsRegistry
+from autopyfactory.threadmanagement import ThreadsRegistry
 
 major, minor, release, st, num = sys.version_info
 

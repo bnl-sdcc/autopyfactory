@@ -42,7 +42,7 @@ from autopyfactory.apfexceptions import CondorVersionFailure, CondorStatusFailur
 from autopyfactory.configloader import Config, ConfigManager, ConfigsDiff
 from autopyfactory.cleanlogs import CleanLogs
 from autopyfactory.logserver import LogServer
-from autopyfactory.interfaces import _thread
+from autopyfactory.threadsmanagement import ManagedThread
 
 from libfactory.queue import LBQueue, OFQueue, SubmitQueue 
 
@@ -227,16 +227,16 @@ class APFQueuesConfigsDiff(ConfigsDiff):
         return self.modified()
 
 
-class ThreadedQueue(_thread):
+class ThreadedQueue(ManagedThread):
     
     def __init__(self, config, section, factory, authman=None):
         self.apfqname = section
-        _thread.__init__(self)
+        ManagedThread.__init__(self)
         factory.threadsregistry.add("queue", self)
 
     def _runonce(self):
         """
-        Method called by _thread.mainloop()
+        Method called by ManagedThread.mainloop()
         Main functional loop of this APFQueue. 
         """        
         self._wait_for_info_services()
