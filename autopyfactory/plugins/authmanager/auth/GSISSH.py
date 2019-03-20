@@ -25,8 +25,8 @@ class GSISSH(object):
         self.manager = manager
         self.factory = manager.factory
         self.basedir = os.path.expanduser(config.get(section, 'authbasedir'))
-        self.privkey = config.get(section, 'gsissh.privatekey' )
-        self.privkeypath = os.path.expanduser(config.get(section, 'gsissh.privatekeyfile' ))
+        self.privkey = config.get(section, 'ssh.privatekey' )
+        self.privkeypath = os.path.expanduser(config.get(section, 'ssh.privatekeyfile' ))
         
         # Handle raw empty values
         if self.privkey.lower() == 'none':
@@ -39,7 +39,7 @@ class GSISSH(object):
         # Create files if needed
         if self.privkey is not None:
             fdir = "%s/%s" % (self.basedir, self.name)
-            fpath = "%s/%s" % (fdir, self.sshtype)
+            fpath = "%s/%s" % (fdir,'x509_user_proxy')
             try:
                 self._ensuredir(fdir)
                 self._decodewrite(fpath, self.privkey)
