@@ -67,7 +67,7 @@ class AuthManager(object):
                 authpluginname = self.aconfig.get(sect, 'plugin')
                 x509h = pluginmanager.getplugin(['autopyfactory', 'plugins', 'authmanager', 'auth'], authpluginname, self, self.aconfig, sect)
                 self.handlers.append(x509h)
-            elif pclass == 'SSH':
+            elif pclass == 'SSH' or 'GSISSH':
                 self.log.debug("Creating SSH handler for %s" % sect )
                 authpluginname = self.aconfig.get(sect, 'plugin')
                 sshh = pluginmanager.getplugin(['autopyfactory', 'plugins', 'authmanager', 'auth'], authpluginname, self, self.aconfig, sect)
@@ -151,6 +151,26 @@ class AuthManager(object):
         pasf = h.getSSHPassFilePath()
         self.log.info('Got file paths for pub, priv, pass for SSH profile %s' % profile)
         return (pub,priv,pasf)
+
+#
+#   API for GSISSHKeyHandler
+# 
+
+    def getGSISSHKey(self, profile):
+        """
+        Returns GSI proxy string from profile
+        """
+        pass
+        
+        
+    def getGSISSHKeyPaths(self, profile):
+        """
+        Returns GSI proxy (private key) from path as a string
+        """
+        h = self._getHandler(profile)
+        priv = h.getGSISSHPrivKeyFilePath()
+        self.log.info('Got file paths for proxy for GSISSH profile %s' % profile)
+        return priv
 
 
     def _getHandler(self, profile):
