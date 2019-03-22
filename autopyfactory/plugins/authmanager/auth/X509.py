@@ -292,7 +292,8 @@ class X509(_thread):
         self.log.debug("[%s] Begin..." % self.name)
         r = 0
         if os.path.exists(self.proxyfile):
-            cmd = 'voms-proxy-info -dont-verify-ac -actimeleft '
+            #cmd = 'voms-proxy-info -dont-verify-ac -actimeleft '
+            cmd = 'voms-proxy-info -actimeleft '
             cmd += ' -file %s ' % self.proxyfile
             
             # Run command
@@ -324,7 +325,8 @@ class X509(_thread):
         self.log.debug("[%s] Begin..." % self.name)
         r = 0
         if os.path.exists(self.proxyfile):
-            cmd = 'voms-proxy-info -dont-verify-ac -timeleft '
+            #cmd = 'voms-proxy-info -dont-verify-ac -timeleft '
+            cmd = 'voms-proxy-info -timeleft '
             cmd += ' -file %s ' % self.proxyfile
             
             # Run command
