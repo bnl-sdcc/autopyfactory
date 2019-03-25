@@ -317,8 +317,6 @@ class AgisCEQueue(object):
         
         #HTCondor CE
         if self.ce_flavour == 'htcondor-ce':
-            pr = 'periodic_remove = (JobStatus == 2 && (CurrentTime - EnteredCurrentStatus) > 604800)'
-            self.cp.set( sect, 'batchsubmit.condorosgce.condor_attributes', pr )          
             if self.parent.maxrss is not None:
                 self.cp.set( sect, 'batchsubmit.condorosgce.condor_attributes.+maxMemory', str(self.parent.maxrss) )
             else:
