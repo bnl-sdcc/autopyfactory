@@ -92,17 +92,18 @@ class AuthManager(object):
                         try:
                             handler.join()
                         except Exception:
-                            self.log.warning('attempt to join() thread for handler %s failed, queue is not active' % handler.name)
+                            self.log.warning('attempt to join() thread for handler %s failed, handler is not active' % handler.name)
                 # In any case, remove the handler object...
                     self.handlers.pop(handler)
             except Exception:
-                self.log.warning('attempt to join() thread for handler %s failed, queue is not active' % handler.name)    
+                self.log.warning('attempt to join() thread for handler %s failed, handler is not active' % handler.name)    
 
 
     def _gethandlerbyname(self, name):
         h = None
         for h in self.handlers:
             if h.name == name:
+                self.log.debug("Found handler %s" % name)
                 return h
         return h    
                 
