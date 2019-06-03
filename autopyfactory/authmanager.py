@@ -49,14 +49,22 @@ class AuthManager(object):
 
 
     def reconfig(self, newconfig):  
-
+        self.log.debug("Performing reconfig() for auth handlers...")
         hdiff = ConfigsDiff(self.aconfig, newconfig)
         self.aconfig = newconfig
-        self._addhandlers(hdiff.added())
-
+        
+        self.log.debug("Deleting removed handlers...")
+        self._delhandlers(hdiff.removed() )
+        self.log.debug("Deleting modified handlers...")
+        self._delhandlers(hdiff.modified() )
+        self.log.debug("Re-creating modified handlers...")
+        self._addhandlers(hdiff.modified() )
+        self.log.debug("Adding new handlers...")        
+        self._addhandlers(hdiff.added() )
+        self.log.info("Completed reconfig() on auth handlers.")
+        
 
     def _addhandlers(self, newsections):
-
         for sect in newsections:
             try:
                 pclass = self.aconfig.get(sect, 'plugin')
@@ -67,7 +75,7 @@ class AuthManager(object):
                 authpluginname = self.aconfig.get(sect, 'plugin')
                 x509h = pluginmanager.getplugin(['autopyfactory', 'plugins', 'authmanager', 'auth'], authpluginname, self, self.aconfig, sect)
                 self.handlers.append(x509h)
-            elif pclass == 'SSH':
+            elif pclass == 'SSH' or 'GSISSH':
                 self.log.debug("Creating SSH handler for %s" % sect )
                 authpluginname = self.aconfig.get(sect, 'plugin')
                 sshh = pluginmanager.getplugin(['autopyfactory', 'plugins', 'authmanager', 'auth'], authpluginname, self, self.aconfig, sect)
@@ -75,6 +83,30 @@ class AuthManager(object):
             else:
                 self.log.warn("Unrecognized auth plugin %s" % pclass )
     
+    def _delhandlers(self, delsections):
+        for sect in delsections:
+            try:
+                handler = self._gethandlerbyname(sect)
+                if handler is not None:
+                    if isinstance(handler, threading.Thread):
+                        try:
+                            handler.join()
+                        except Exception:
+                            self.log.warning('attempt to join() thread for handler %s failed, handler is not active' % handler.name)
+                # In any case, remove the handler object...
+                    self.handlers.pop(handler)
+            except Exception:
+                self.log.warning('attempt to join() thread for handler %s failed, handler is not active' % handler.name)    
+
+
+    def _gethandlerbyname(self, name):
+        h = None
+        for h in self.handlers:
+            if h.name == name:
+                self.log.debug("Found handler %s" % name)
+                return h
+        return h    
+                
         
     def activate(self):
         """ 
@@ -151,6 +183,26 @@ class AuthManager(object):
         pasf = h.getSSHPassFilePath()
         self.log.info('Got file paths for pub, priv, pass for SSH profile %s' % profile)
         return (pub,priv,pasf)
+
+#
+#   API for GSISSHKeyHandler
+# 
+
+    def getGSISSHKey(self, profile):
+        """
+        Returns GSI proxy string from profile
+        """
+        pass
+        
+        
+    def getGSISSHKeyPaths(self, profile):
+        """
+        Returns GSI proxy (private key) from path as a string
+        """
+        h = self._getHandler(profile)
+        priv = h.getGSISSHPrivKeyFilePath()
+        self.log.info('Got file paths for proxy for GSISSH profile %s' % profile)
+        return priv
 
 
     def _getHandler(self, profile):
