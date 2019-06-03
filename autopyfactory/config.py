@@ -10,14 +10,14 @@ from autopyfactory.apfexceptions import CondorVersionFailure, CondorStatusFailur
 from autopyfactory.configloader import Config, ConfigManager
 from autopyfactory.cleanlogs import CleanLogs
 from autopyfactory.logserver import LogServer
-from autopyfactory.interfaces import _thread
+from autopyfactory.interfaces import ManagedThread
 
 
-class ConfigHandler(_thread):
+class ConfigHandler(ManagedThread):
 
     def __init__(self, factory):
 
-        _thread.__init__(self)
+        ManagedThread.__init__(self)
         self.log = logging.getLogger('autopyfactory.confighandler')
 
         self.factory = factory

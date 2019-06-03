@@ -42,7 +42,9 @@ from autopyfactory.apfexceptions import CondorVersionFailure, CondorStatusFailur
 from autopyfactory.configloader import Config, ConfigManager, ConfigsDiff
 from autopyfactory.cleanlogs import CleanLogs
 from autopyfactory.logserver import LogServer
-from autopyfactory.interfaces import _thread
+from autopyfactory.threadsmanagement import ManagedThread
+
+from libfactory.queue import LBQueue, OFQueue, SubmitQueue 
 
 
 class APFQueuesManager(object):
@@ -66,10 +68,6 @@ class APFQueuesManager(object):
         self.factory = factory
         self.log.debug('APFQueuesManager: Object initialized.')
 
-# ----------------------------------------------------------------------
-#            Public Interface
-# ---------------------------------------------------------------------- 
-
     def getConfig(self):
         """
         get updated configuration from the Factory Config plugins
@@ -88,28 +86,12 @@ class APFQueuesManager(object):
                 2. stops and deletes old queues if needed
         """
         self.log.debug("Performing queue update...")
-        ###qcldiff = self.factory.qcl.compare(newqcl)
-        ####qcldiff is a dictionary like this
-        ####    {'REMOVED': [ <list of removed queues> ],
-        ####     'ADDED':   [ <list of new queues> ],
-        ####     'EQUAL':   [ <list of queues that did not change> ],
-        ####     'MODIFIED':[ <list of queues that changed> ] 
-        ####    }
-        ####
-        ###self.factory.qcl = newqcl
-        ####
-        ###self._delqueues(qcldiff['REMOVED'])
-        ###self._addqueues(qcldiff['ADDED'])
-        ###self._delqueues(qcldiff['MODIFIED'])
-        ###self._addqueues(qcldiff['MODIFIED'])
-
         qcldiff = APFQueuesConfigsDiff(self.factory.qcl, newqcl)
         self.factory.qcl = newqcl
         self._del_queue_l(qcldiff.gonequeues())
         self._add_queue_l(qcldiff.newqueues())
         self._del_queue_l(qcldiff.modifiedqueues())
         self._add_queue_l(qcldiff.modifiedqueues())
-
         self._dumpqcl()
 
 
@@ -145,16 +127,15 @@ class APFQueuesManager(object):
             self.log.debug("%d queues exist. Starting all queue threads, if not running." % len(self.queues))
             for q in self.queues.values():
                 self.log.debug("Checking queue %s" % q.apfqname)
-                if not q.isAlive():
-                    self.log.debug("Starting queue %s." % q.apfqname)
-                    q.start()
+                if isinstance(q, threading.Thread):
+                    if not q.isAlive():
+                            self.log.debug("Starting queue %s." % q.apfqname)
+                            q.start()
+                    else:
+                        self.log.debug("Queue %s already running." % q.apfqname)                
                 else:
-                    self.log.debug("Queue %s already running." % q.apfqname)
+                        self.log.debug("Queue %s is not a thread, so not starting." % q.apfqname )
 
-
-    # ----------------------------------------------------------------------
-    #  private methods
-    # ----------------------------------------------------------------------
 
     def _add_queue_l(self, apfqnames):
         """
@@ -175,13 +156,27 @@ class APFQueuesManager(object):
         self.log.debug('adding queue %s' %apfqname)
 
         queueenabled = self.factory.qcl.generic_get(apfqname, 'enabled', 'getboolean')
+        queueklass = self.factory.qcl.generic_get(apfqname, 'klass', default_value = 'ThreadedAPFQueue')
+        self.log.debug('queue %s is type %s' % ( apfqname, queueklass))
         globalenabled = self.factory.fcl.generic_get('Factory', 'enablequeues', 'getboolean', default_value=True)
         enabled = queueenabled and globalenabled
         
         if enabled:
             try:
-                qobject = APFQueue(apfqname, self.factory)
-                self.queues[apfqname] = qobject
+                #qobject = APFQueue(apfqname, self.factory)
+                #config, factory, authman=None):
+                qconf = self.factory.qcl
+                if queueklass == 'ThreadedAPFQueue':           
+                    qobject = ThreadedAPFQueue(qconf, apfqname, self.factory, authman = self.factory.authmanager)
+                    self.queues[apfqname] = qobject
+                elif queueklass == 'ThreadedLBQueue':
+                    qobject = ThreadedLBQueue(qconf, apfqname, self.factory, authman = self.factory.authmanager)
+                    self.queues[apfqname] = qobject
+                elif queueklass == 'APFSubmitQueue':
+                    qobject = APFSubmitQueue(qconf, apfqname, self.factory, authman = self.factory.authmanager)
+                    self.queues[apfqname] = qobject                                        
+                else:
+                    self.log.error('No such queueklass %s !' % queueklass)    
                 #qobject.start()
                 self.log.info('Queue %s enabled.' % apfqname)
             except Exception:
@@ -207,11 +202,6 @@ class APFQueuesManager(object):
             count += 1
         self.log.debug('%d queues joined and removed' %count)
 
-
-    # ----------------------------------------------------------------------
-    #  ancillary functions 
-    # ----------------------------------------------------------------------
-
     def _diff_lists(self, l1, l2):
         """
         Ancillary method to calculate diff between two lists
@@ -219,60 +209,132 @@ class APFQueuesManager(object):
         d1 = [i for i in l1 if not i in l2]
         d2 = [i for i in l2 if not i in l1]
         return d1, d2
- 
 
-class APFQueue(_thread):
+
+
+class APFQueuesConfigsDiff(ConfigsDiff):
     """
-    -----------------------------------------------------------------------
-    Encapsulates all the functionality related to servicing each queue (i.e. siteid, i.e. site).
-    -----------------------------------------------------------------------
-    Public Interface:
-            The class is inherited from Thread, so it has the same public interface.
-    -----------------------------------------------------------------------
+    little class to manage the differences between 2 queues config loaders
     """
+
+    def gonequeues(self):
+        return self.removed()
+
+    def newqueues(self):
+        return self.added()
+
+    def modifiedqueues(self):
+        return self.modified()
+
+
+class ThreadedQueue(ManagedThread):
     
-    def __init__(self, apfqname, factory):
-        """
-        apfqname is the name of the section in the queueconfig, 
-        i.e. the queue name, 
-        factory is the Factory object who created the queue 
-        """
-
-        _thread.__init__(self)
+    def __init__(self, config, section, factory, authman=None):
+        self.apfqname = section
+        ManagedThread.__init__(self)
         factory.threadsregistry.add("queue", self)
 
-        # recording moment the object was created
+    def _runonce(self):
+        """
+        Method called by ManagedThread.mainloop()
+        Main functional loop of this APFQueue. 
+        """        
+        self._wait_for_info_services()
+        if self._new_status_info():
+            nsub = self._callscheds()
+            self._submit(nsub)
+            self._monitor()
+
+        self._exitloop()
+        self._logtime() 
+
+    def _exitloop(self):
+        """
+        Exit loop if desired number of cycles is reached...  
+        """
+        self.log.debug("__exitloop. Checking to see how many cycles to run.")
+        if self.cycles and self.cyclesrun >= self.cycles:
+                self.log.debug('_ stopping the thread because high cyclesrun')
+                self.stopevent.set()                        
+        self.log.debug("__exitloop. Incrementing cycles...")
+
+    def _wait_for_info_services(self):
+        """
+        wait for the info plugins to have valid content
+        before doing actions
+        """
+        self.log.debug('starting')
+        timeout = 1800 # 30 minutes
+        start = int(time.time())
+        
+        # Only worry about plugins that have been defined...
+        pluginstowait = []
+        if self.wmsstatus_plugin is not None:
+            pluginstowait.append(self.wmsstatus_plugin)
+        if self.batchstatus_plugin is not None:
+            pluginstowait.append(self.batchstatus_plugin)
+                
+        loop = True
+        while loop:
+            self.log.debug("Checking for info plugin valid content...")
+            now = int(time.time())
+            if (now - start) > timeout:
+                loop = False
+            else:
+                infolist = []
+                for p in pluginstowait:
+                    info = p.getInfo()
+
+                    infolist.append(info)
+                if None not in infolist:
+                    loop = False
+                else:
+                    time.sleep(10)
+        self.log.debug('leaving')        
+
+
+class APFSubmitQueue(SubmitQueue):
+    '''
+    All functionality except threaded behavior.    
+    
+    '''
+    def __init__(self, config, section, factory, authman=None):      
+        self.qcl = config
+        self.apfqname = section
+        SubmitQueue.__init__(self, config, section)
+        self.log = logging.getLogger('autopyfactory.queue.%s' %self.apfqname)
+        self.log.debug('APFQueue: Initializing object...')
+        if factory is None:
+            logging.debug("Creating config for factory mock.")
+            fcl = Config()
+            fconf = self.qcl.get(self.apfqname, 'factoryconf')
+            okread = fcl.read(fconf)
+            logging.debug("Successfully read %s " % okread)
+            from autopyfactory.factory import Factory
+            self.factory = Factory.getFactoryMock(fcl, authman)
+        else:
+            self.factory = factory
+            self.fcl = self.factory.fcl 
+            self.mcl = self.factory.mcl
+        
         self.inittime = datetime.datetime.now()
 
-        self.log = logging.getLogger('autopyfactory.queue.%s' %apfqname)
-        self.log.debug('APFQueue: Initializing object...')
-
-        # apfqname is the APF queue name, i.e. the section heading in queues.conf
-        self.apfqname = apfqname
-        self.factory = factory
-        self.fcl = self.factory.fcl 
-        self.qcl = self.factory.qcl 
-        self.qcl = self.qcl.getSection(self.apfqname)  # so self.qcl only has one section (this queue) instead of all sections
-        self.mcl = self.factory.mcl
-
-        self.log.debug('APFQueue init: initial configuration:\n%s' % self.qcl.getSection(apfqname).getContent())
-   
         try: 
-            self.wmsqueue = self.qcl.generic_get(apfqname, 'wmsqueue')
-
-            #self.cycles = self.fcl.generic_get("Factory", 'cycles' ,'getint')
+            self.wmsqueue = self.qcl.generic_get(self.apfqname, 'wmsqueue')
             cycles = self.fcl.generic_get("Factory", 'cycles')
             if cycles != None:
                 cycles = int(cycles)
             self.cycles = cycles
             self.cyclesrun = 0
 
-            self.sleep = self.qcl.generic_get(apfqname, 'apfqueue.sleep', 'getint')
+            self.sleep = self.qcl.generic_get(self.apfqname, 'apfqueue.sleep', 'getint')
             self._thread_loop_interval =  self.sleep
            
         except Exception as ex:
             self.log.exception('APFQueue: exception captured while reading configuration variables to create the object.')
             raise ex
+
+        self.last_batchqueue_timestamp = 0
 
         try:
             self._plugins()
@@ -280,19 +342,12 @@ class APFQueue(_thread):
             self.log.exception('APFQueue: No condor or bad version')
             raise cvf
         except Exception as ex:
-            self.log.exception('APFQueue: Exception getting plugins' )
+            logging.error('APFQueue: Exception getting plugins' )
             raise ex
         
-        self.log.debug('APFQueue: Object initialized.')
+        logging.debug('APFQueue init: initial configuration:\n%s' %self.qcl.getSection(self.apfqname).getContent())   
+        logging.debug('APFQueue: Object initialized.')
 
-        ### BEGIN TEST TIMESTAMP ###
-        self.last_batchqueue_timestamp = 0
-        ### END TEST TIMESTAMP ###
-
-
-    # =========================================================================
-    #       get the plugins: begin
-    # =========================================================================
 
     def _plugins(self):
         """
@@ -306,6 +361,9 @@ class APFQueue(_thread):
             self._monitor_plugins()
         except:
             self.log.error("Unable to initialize monitor plugin.")
+        
+        #batchsubmitpluginname = self.qcl.get(self.apfqname, 'batchsubmitplugin')
+        #self.batchsubmit_plugin = pluginmanager.getplugin(['autopyfactory', 'plugins', 'queue', 'batchsubmit'], batchsubmitpluginname, self, self.qcl, self.apfqname)   # a single BatchSubmit plugin
 
     def _sched_plugins(self):
         """
@@ -366,6 +424,7 @@ class APFQueue(_thread):
                                                           self, 
                                                           self.qcl, 
                                                           self.apfqname)
+        self.batchplugin = self.batchsubmit_plugin
 
 
     def _monitor_plugins(self):
@@ -388,63 +447,6 @@ class APFQueue(_thread):
                     self.monitor_plugins.append(monitor_plugin)
 
 
-    # =========================================================================
-    #       get the plugins: end 
-    # =========================================================================
-
-
-    def _run(self):
-        """
-        Method called by thread.start()
-        Main functional loop of this APFQueue. 
-        """        
-        self._wait_for_info_services()
-        ### BEGIN TEST TIMESTAMP ###
-        if self._new_status_info():
-            nsub = self._callscheds()
-            self._submit(nsub)
-            self._monitor()
-        ### END TEST TIMESTAMP ###
-        self._exitloop()
-        self._logtime() 
-
-
-    def _wait_for_info_services(self):
-        """
-        wait for the info plugins to have valid content
-        before doing actions
-        """
-        self.log.debug('starting')
-        timeout = 1800 # 30 minutes
-        start = int(time.time())
-        
-        # Only worry about plugins that have been defined...
-        pluginstowait = []
-        if self.wmsstatus_plugin is not None:
-            pluginstowait.append(self.wmsstatus_plugin)
-        if self.batchstatus_plugin is not None:
-            pluginstowait.append(self.batchstatus_plugin)
-                
-        loop = True
-        while loop:
-            self.log.debug("Checking for info plugin valid content...")
-            now = int(time.time())
-            if (now - start) > timeout:
-                loop = False
-            else:
-                infolist = []
-                for p in pluginstowait:
-                    info = p.getInfo()
-
-                    infolist.append(info)
-                if None not in infolist:
-                    loop = False
-                else:
-                    time.sleep(10)
-        self.log.debug('leaving')
-
-
-    ### BEGIN TEST TIMESTAMP ###
     def _new_status_info(self):
         # FIXME
         # the timestamp for WMS Status is missing !!
@@ -453,7 +455,6 @@ class APFQueue(_thread):
             return False
         else:
             return True
-    ### END TEST TIMESTAMP ###
 
 
     def _callscheds(self, nsub=0):
@@ -505,15 +506,7 @@ class APFQueue(_thread):
                 m.updateLabel(self.apfqname, self.fullmsg)
 
 
-    def _exitloop(self):
-        """
-        Exit loop if desired number of cycles is reached...  
-        """
-        self.log.debug("__exitloop. Checking to see how many cycles to run.")
-        if self.cycles and self.cyclesrun >= self.cycles:
-                self.log.debug('_ stopping the thread because high cyclesrun')
-                self.stopevent.set()                        
-        self.log.debug("__exitloop. Incrementing cycles...")
+
 
     def _logtime(self):
         """
@@ -539,34 +532,21 @@ class APFQueue(_thread):
         self.log.debug("__reporttime: Leaving")
 
 
-    def wmsstatus(self):
-        """
-        method to make this APFQueue to 
-        be a valid WMS Status plugin for another APFQueue
-        """
-        return 0 # for now...
+# Mix-in class to duplicate old queue behavior, but allow non-threaded submit queue
+class ThreadedAPFQueue(APFSubmitQueue, ThreadedQueue):
+    
+    def __init__(self, config, section, factory, authman=None):
+        ThreadedQueue.__init__(self, config, section, factory, authman)
+        APFSubmitQueue.__init__(self, config, section, factory, authman)
 
 
-    # End of run-related methods
-
-
-class APFQueuesConfigsDiff(ConfigsDiff):
-    """
-    little class to manage the differences between 2 queues config loaders
-    """
-
-    def gonequeues(self):
-        return self.removed()
-
-    def newqueues(self):
-        return self.added()
-
-    def modifiedqueues(self):
-        return self.modified()
-
+class ThreadedLBQueue(LBQueue, ThreadedQueue):
+    def __init__(self, config, section, factory, authman=None):
+        ThreadedQueue.__init__(self, config, section, factory, authman)
+        LBQueue.__init__(self, config, section)
 
                  
-class APFSubmitQueue(object):
+class APFMockedSubmitQueue(object):
     '''
     Simple submit-only, non-threaded APF Queue. 
     

@@ -316,6 +316,7 @@ class AgisCEQueue(object):
         self.cp.set( sect, 'sched.scale.factor', str(self.apf_scale_factor) )
         
         #HTCondor CE
+
         if self.ce_flavour == 'htcondor-ce':    
             if self.parent.maxrss is not None:
                 self.cp.set( sect, 'batchsubmit.condorosgce.condor_attributes.+maxMemory', str(self.parent.maxrss) )
